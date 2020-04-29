@@ -11,6 +11,14 @@
 
 constexpr auto check = ::_com_util::CheckError;
 
+enum class IDLFLAG : USHORT {
+	NONE = IDLFLAG_NONE,
+	FIN = IDLFLAG_FIN,
+	FOUT = IDLFLAG_FOUT,
+	FLCID = IDLFLAG_FLCID,
+	FRETVAL = IDLFLAG_FRETVAL,
+};
+
 int wmain(int argc, WCHAR* argv[])
 {
 	auto libPath = argv[1];
@@ -33,7 +41,7 @@ int wmain(int argc, WCHAR* argv[])
 		printf("wLibFlags: %s\n", nameof::nameof_enum((LIBFLAGS)pTLibAttr->wLibFlags).data());
 		pTypeLib->ReleaseTLibAttr(pTLibAttr);
 
-		bstr_t name, docString, helpFile;
+		_bstr_t name, docString, helpFile;
 		check(pTypeLib->GetDocumentation(-1, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
 		printf("Documentation Name: %S\n", name.GetBSTR());
 		printf("Documentation String: %S\n", docString.GetBSTR());
@@ -52,7 +60,7 @@ int wmain(int argc, WCHAR* argv[])
 			auto& item = custData.prgCustData[i];
 			LPOLESTR pGuidStr{};
 			check(StringFromCLSID(item.guid, &pGuidStr));
-			printf(" %u: CustData GUID: %S\n", i, pGuidStr);
+			printf(" [%u]: CustData GUID: %S\n", i, pGuidStr);
 			CoTaskMemFree(pGuidStr);
 			variant_t varStr;
 			check(VariantChangeType(&varStr, &item.varValue, VARIANT_ALPHABOOL, VT_BSTR));
@@ -64,16 +72,17 @@ int wmain(int argc, WCHAR* argv[])
 	printf("# of Type: %u\n", pTypeLib->GetTypeInfoCount());
 	for (UINT iType = 0; iType < pTypeLib->GetTypeInfoCount(); ++iType)
 	{
-		printf("-------------------- %u --------------------\n", iType);
+		printf("===================== %u =====================\n", iType);
 		TYPEKIND typeKind{};
 		check(pTypeLib->GetTypeInfoType(iType, &typeKind));
 		printf("TypeKind of Type: %s\n", nameof::nameof_enum(typeKind).data());
-	
-		bstr_t name, docString, helpFile;
-		check(pTypeLib->GetDocumentation(iType, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
-		printf("Documentation Name: %S\n", name.GetBSTR());
-		printf("Documentation String: %S\n", docString.GetBSTR());
-		printf("Documentation HelpFile: %S\n", helpFile.GetBSTR());
+		{
+			_bstr_t name, docString, helpFile;
+			check(pTypeLib->GetDocumentation(iType, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
+			printf("Documentation Name: %S\n", name.GetBSTR());
+			printf("Documentation String: %S\n", docString.GetBSTR());
+			printf("Documentation HelpFile: %S\n", helpFile.GetBSTR());
+		}
 	
 		ITypeInfoPtr pTypeInfo{};
 		check(pTypeLib->GetTypeInfo(iType, &pTypeInfo));
@@ -98,13 +107,7 @@ int wmain(int argc, WCHAR* argv[])
 		printf("Type Flags: %s\n", nameof::nameof_enum((TYPEFLAGS)pTypeAttr->wTypeFlags).data());
 		printf("VerNum: %u,%u\n", pTypeAttr->wMajorVerNum, pTypeAttr->wMinorVerNum);
 		//printf("tdescAlias: %u\n", pTypeAttr->tdescAlias);
-		enum class IDLFLAG : USHORT {
-			NONE = IDLFLAG_NONE, 
-			FIN = IDLFLAG_FIN, 
-			FOUT = IDLFLAG_FOUT, 
-			FLCID = IDLFLAG_FLCID, 
-			FRETVAL = IDLFLAG_FRETVAL,
-		};
+
 		printf("idldescType: %s\n", nameof::nameof_enum((IDLFLAG)pTypeAttr->idldescType.wIDLFlags).data());
 
 		printf("-------------------- Vars --------------------\n");
@@ -112,31 +115,32 @@ int wmain(int argc, WCHAR* argv[])
 		{
 			VARDESC* pVarDesc{};
 			check(pTypeInfo->GetVarDesc(iVar, &pVarDesc));
-			printf(" %u: memid: %d\n", iVar, pVarDesc->memid);
+			printf(" [%u]: memid: 0x%x\n", iVar, pVarDesc->memid);
 			{
 				BSTR names[256]{};
 				UINT cNames{};
 				check(pTypeInfo->GetNames(pVarDesc->memid, names, _countof(names), &cNames));
-				printf(" %u: name:", iVar);
+				printf(" [%u]: name:", iVar);
 				for (UINT i = 0; i < cNames; ++i)
 				{
-					printf("%S, ", bstr_t(names[i], false).GetBSTR());
+					printf("%S, ", names[i]);
 				}
 				printf("\n");
 			}
+			{
+				_bstr_t name, docString, helpFile;
+				check(pTypeInfo->GetDocumentation(pVarDesc->memid, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
+				printf(" \tDocumentation Name: %S\n", name.GetBSTR());
+				printf(" \tDocumentation String: %S\n", docString.GetBSTR());
+				printf(" \tDocumentation HelpFile: %S\n", helpFile.GetBSTR());
+			}
 
-			bstr_t name, docString, helpFile;
-			check(pTypeInfo->GetDocumentation(pVarDesc->memid, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
-			printf(" Documentation Name: %S\n", name.GetBSTR());
-			printf(" Documentation String: %S\n", docString.GetBSTR());
-			printf(" Documentation HelpFile: %S\n", helpFile.GetBSTR());
-
-			printf(" %u: Schema: %S\n", iVar, pVarDesc->lpstrSchema);
+			printf(" [%u]: Schema: %S\n", iVar, pVarDesc->lpstrSchema);
 			// oInst
 			// lpvarValue
 			// elemdescVar
-			printf(" %u: wVarFlags: %s\n", iVar, nameof::nameof_enum((VARFLAGS)pVarDesc->wVarFlags).data());
-			printf(" %u: varkind: 0x%08X<%s>\n", iVar, pVarDesc->varkind, nameof::nameof_enum(pVarDesc->varkind).data());
+			printf(" [%u]: wVarFlags: %s\n", iVar, nameof::nameof_enum((VARFLAGS)pVarDesc->wVarFlags).data());
+			printf(" [%u]: varkind: 0x%08X<%s>\n", iVar, pVarDesc->varkind, nameof::nameof_enum(pVarDesc->varkind).data());
 
 			pTypeInfo->ReleaseVarDesc(pVarDesc);
 		}
@@ -146,36 +150,37 @@ int wmain(int argc, WCHAR* argv[])
 		{
 			FUNCDESC* pFuncDesc{};
 			check(pTypeInfo->GetFuncDesc(iFunc, &pFuncDesc));
-			printf(" %u: memid: %d\n", iFunc, pFuncDesc->memid);
+			printf(" [%u]: memid: 0x%x\n", iFunc, pFuncDesc->memid);
 			{
 				BSTR names[256]{};
 				UINT cNames{};
 				check(pTypeInfo->GetNames(pFuncDesc->memid, names, _countof(names), &cNames));
-				printf(" %u: name: ", iFunc);
+				printf(" [%u]: name: ", iFunc);
 				for (UINT i = 0; i < cNames; ++i)
 				{
-					printf("%s%S%s", i > 1 ? ", ":"" ,bstr_t(names[i], false).GetBSTR(), i == 0 ? "(" : "");
+					printf("%s%S%s", i > 1 ? ", ":"" ,names[i], i == 0 ? "(" : "");
 				}
 				printf(")\n");
 			}
-
-			bstr_t name, docString, helpFile;
-			check(pTypeInfo->GetDocumentation(pFuncDesc->memid, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
-			printf(" Documentation Name: %S\n", name.GetBSTR());
-			printf(" Documentation String: %S\n", docString.GetBSTR());
-			printf(" Documentation HelpFile: %S\n", helpFile.GetBSTR());
+			{
+				_bstr_t name, docString, helpFile;
+				check(pTypeInfo->GetDocumentation(pFuncDesc->memid, name.GetAddress(), docString.GetAddress(), nullptr, helpFile.GetAddress()));
+				printf(" \tDocumentation Name: %S\n", name.GetBSTR());
+				printf(" \tDocumentation String: %S\n", docString.GetBSTR());
+				printf(" \tDocumentation HelpFile: %S\n", helpFile.GetBSTR());
+			}
 
 			// lprgscode
 			// lprgelemdescParam
-			printf(" %u: funckind: %s\n", iFunc, nameof::nameof_enum(pFuncDesc->funckind).data());
-			printf(" %u: invkind: %s\n", iFunc, nameof::nameof_enum(pFuncDesc->invkind).data());
-			printf(" %u: callconv: %s\n", iFunc, nameof::nameof_enum(pFuncDesc->callconv).data());
-			printf(" %u: cParams: %u\n", iFunc, pFuncDesc->cParams);
-			printf(" %u: cParamsOpt: %u\n", iFunc, pFuncDesc->cParamsOpt);
-			printf(" %u: oVft: %u\n", iFunc, pFuncDesc->oVft);
-			printf(" %u: cScodes: %u\n", iFunc, pFuncDesc->cScodes);
+			printf(" [%u]: funckind: %s\n", iFunc, nameof::nameof_enum(pFuncDesc->funckind).data());
+			printf(" [%u]: invkind: %s\n", iFunc, nameof::nameof_enum(pFuncDesc->invkind).data());
+			printf(" [%u]: callconv: %s\n", iFunc, nameof::nameof_enum(pFuncDesc->callconv).data());
+			printf(" [%u]: cParams: %u\n", iFunc, pFuncDesc->cParams);
+			printf(" [%u]: cParamsOpt: %u\n", iFunc, pFuncDesc->cParamsOpt);
+			printf(" [%u]: oVft: %u\n", iFunc, pFuncDesc->oVft);
+			printf(" [%u]: cScodes: %u\n", iFunc, pFuncDesc->cScodes);
 			// elemdescFunc
-			printf(" %u: wFuncFlags: 0x%08X<%s>\n", iFunc, pFuncDesc->wFuncFlags, nameof::nameof_enum((FUNCFLAGS)pFuncDesc->wFuncFlags).data());
+			printf(" [%u]: wFuncFlags: 0x%08X<%s>\n", iFunc, pFuncDesc->wFuncFlags, nameof::nameof_enum((FUNCFLAGS)pFuncDesc->wFuncFlags).data());
 
 			pTypeInfo->ReleaseFuncDesc(pFuncDesc);
 		}		
